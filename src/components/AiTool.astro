@@ -1,0 +1,54 @@
+---
+import type { AiTool } from '../tools';
+import { MODELS, megabytes, type ModelKey } from '../ai/config';
+import AiBgScript from './AiBgScript.astro';
+import AiOcrScript from './AiOcrScript.astro';
+import AiTranscribeScript from './AiTranscribeScript.astro';
+import AiUpscaleScript from './AiUpscaleScript.astro';
+
+interface Props { tool: AiTool }
+const { tool } = Astro.props;
+// Spec §4 empty states. The island (src/ui/ai.ts) takes over once its script loads.
+const COPY = {
+  bg: { title: 'Drop a photo here', choose: 'Choose photo', noun: 'photos' },
+  ocr: { title: 'Drop an image with text', choose: 'Choose image', noun: 'images' },
+  upscale: { title: 'Drop an image', choose: 'Choose image', noun: 'images' },
+  whisper: { title: 'Drop an audio or video file', choose: 'Choose file', noun: 'files' },
+}[tool.model];
+// First-use download, from the model list.
+const MODEL_KEY: Record<AiTool['model'], ModelKey> = { bg: 'bg', ocr: 'tessdata', upscale: 'upscale', whisper: 'whisper' };
+const MODEL_BYTES = MODELS[MODEL_KEY[tool.model]].bytes;
+const MODEL_SIZE = megabytes(MODEL_BYTES);
+---
+<div
+  data-kind="ai"
+  data-tool={tool.slug}
+  data-model={tool.model}
+  data-model-size={MODEL_SIZE}
+  data-model-bytes={MODEL_BYTES}
+>
+  <div class="drop">
+    <p class="drop-title">{COPY.title}</p>
+    <label class="btn">
+      {COPY.choose}
+      <input type="file" accept={tool.accepts} />
+    </label>
+    <p class="privacy">Runs on your device with on-device AI. Your {COPY.noun} are never uploaded.</p>
+  </div>
+  {/* 4× is shown once the island knows this device can take it (src/ui/upscale.ts). */}
+  {tool.model === 'upscale' && (
+    <fieldset class="settings toggle" data-scale>
+      <legend>Scale</legend>
+      <label><input type="radio" name="scale" value="2" checked />2×</label>
+      <label hidden data-scale-4><input type="radio" name="scale" value="4" />4×</label>
+    </fieldset>
+  )}
+  <p class="status" role="status" aria-live="polite" data-status></p>
+  <div data-results></div>
+</div>
+
+{/* Each tool's island, statically imported: only that tool's script is on its page, and the budget counts it. */}
+{tool.model === 'bg' && <AiBgScript />}
+{tool.model === 'ocr' && <AiOcrScript />}
+{tool.model === 'upscale' && <AiUpscaleScript />}
+{tool.model === 'whisper' && <AiTranscribeScript />}

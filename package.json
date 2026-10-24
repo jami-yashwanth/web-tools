@@ -14,19 +14,28 @@
     "test:e2e": "playwright test",
     "fixtures": "bash scripts/make-fixtures.sh",
     "typecheck": "astro check",
-    "check:budget": "node scripts/check-budget.mjs"
+    "check:budget": "node scripts/check-budget.mjs",
+    "test:models": "node scripts/model-quality.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",
+    "@huggingface/transformers": "4.3.1",
     "@jsquash/jpeg": "^1.6.0",
     "@jsquash/oxipng": "^2.3.0",
     "@jsquash/png": "^3.1.1",
     "@jsquash/webp": "^1.5.0",
     "astro": "^7.4.2",
     "fflate": "^0.8.3",
+    "gifenc": "1.0.3",
     "libheif-js": "^1.23.5",
+    "mp4-muxer": "5.2.2",
+    "mp4box": "2.4.1",
+    "onnxruntime-web": "1.30.0",
     "pdf-lib": "^1.17.1",
-    "qrcode-generator": "^2.0.4"
+    "pdfjs-dist": "^6.4.299",
+    "qrcode-generator": "^2.0.4",
+    "tesseract.js": "^7.0.0",
+    "tesseract.js-core": "7.0.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",

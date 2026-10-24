@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Base from '../layouts/Base.astro';
+import { WHISPER_FILES, WHISPER_GPU_FILES, WHISPER_REPO, WHISPER_REVISION, WHISPER_SHA256 } from '../ai/whisper/files';
 
 const root = process.cwd();
 const pkgVersion = (name: string): string =>
@@ -27,6 +28,11 @@ const libde265Version = '1.0.15';
 
 // pdf-lib bundles its own nested tslib 1.x, not the root tslib.
 const pdfLibTslib = pkgVersion('pdf-lib/node_modules/tslib');
+
+// Whisper base: every file we download, with its size and sha256 (both sets: WebAssembly and WebGPU).
+const whisperFiles = Object.entries({ ...WHISPER_FILES, ...WHISPER_GPU_FILES })
+  .map(([name, f]) => `${name} (${f.bytes.toLocaleString('en-GB')} bytes, sha256 ${WHISPER_SHA256[name]})`)
+  .join('; ');
 
 const libs = [
   {
@@ -85,9 +91,23 @@ const libs = [
     name: 'pdf-lib',
     version: pkgVersion('pdf-lib'),
     licence: 'MIT',
-    note: 'Merges and splits PDFs. Bundles pako, @pdf-lib/standard-fonts, @pdf-lib/upng and tslib, listed below.',
+    note: 'Merges and splits PDFs, and makes PDFs from images. Bundles pako, @pdf-lib/standard-fonts, @pdf-lib/upng and tslib, listed below.',
     source: `https://github.com/Hopding/pdf-lib/tree/v${pkgVersion('pdf-lib')}`,
     texts: [{ label: 'LICENSE', text: licenceText('pdf-lib/LICENSE.md') }],
+  },
+  {
+    name: 'pdf.js (pdfjs-dist)',
+    version: pkgVersion('pdfjs-dist'),
+    licence: 'Apache-2.0',
+    note: 'Draws PDF pages as images. Also ships the font, CMap and image-decoder (JPEG 2000, JBIG2) data it loads on demand.',
+    source: `https://github.com/mozilla/pdf.js/tree/v${pkgVersion('pdfjs-dist')}`,
+    texts: [
+      { label: 'LICENSE', text: licenceText('pdfjs-dist/LICENSE') },
+      { label: 'Foxit standard font licence', text: licenceText('pdfjs-dist/standard_fonts/LICENSE_FOXIT') },
+      { label: 'Liberation font licence', text: licenceText('pdfjs-dist/standard_fonts/LICENSE_LIBERATION') },
+      { label: 'OpenJPEG licence (JPEG 2000 decoder)', text: licenceText('pdfjs-dist/wasm/LICENSE_OPENJPEG') },
+      { label: 'JBIG2 decoder licence', text: licenceText('pdfjs-dist/wasm/LICENSE_JBIG2') },
+    ],
   },
   {
     name: 'pako',
@@ -133,12 +153,152 @@ const libs = [
     texts: [{ label: 'LICENSE', text: licenceText(null, 'qrcode-generator.txt') }],
   },
   {
+    name: 'tesseract.js',
+    version: pkgVersion('tesseract.js'),
+    licence: 'Apache-2.0',
+    note: 'Reads text in images (Image to text). Its worker script is part of this site, not loaded from a CDN.',
+    source: `https://github.com/naptha/tesseract.js/tree/v${pkgVersion('tesseract.js')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('tesseract.js/LICENSE.md') }],
+  },
+  {
+    name: 'tesseract.js-core',
+    version: pkgVersion('tesseract.js-core'),
+    licence: 'Apache-2.0',
+    note: 'The Tesseract OCR engine compiled to WebAssembly (Apache-2.0), with Leptonica (BSD-2-Clause) and the image libraries it uses (libpng, libjpeg, libtiff, libwebp, giflib, zlib). Part of this site, not loaded from a CDN.',
+    source: `https://github.com/naptha/tesseract.js-core/tree/v${pkgVersion('tesseract.js-core')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('tesseract.js-core/LICENSE') }],
+  },
+  {
+    name: 'tessdata_fast (English)',
+    version: '4.1.0',
+    licence: 'Apache-2.0',
+    note: 'The English language data for Tesseract, downloaded the first time you read text from an image (eng.traineddata, sha256 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2). We serve it from this site, gzipped, unchanged, as eng-fast-4.1.0.traineddata.gz.bin (sha256 f1c22599ed6fd3eb821d87fdb43e09f98b61179a4abe38c43cfca2cdcb9f5ec2).',
+    source: 'https://github.com/tesseract-ocr/tessdata_fast/blob/4.1.0/eng.traineddata',
+    texts: [{ label: 'LICENSE', text: licenceText(null, 'tessdata-fast-LICENSE.txt') }],
+  },
+  {
+    name: 'onnxruntime-web',
+    version: pkgVersion('onnxruntime-web'),
+    licence: 'MIT',
+    note: 'Runs the background-removal, upscaling and speech models (Remove background, Upscale image, Transcribe audio). Its scripts and WebAssembly .wasm are part of this site, not loaded from a CDN. The .wasm of its WebGPU build (ort-wasm-simd-threaded.asyncify.wasm, 26,781,914 bytes, unchanged) is downloaded from our model host on computers that transcribe with WebGPU. Bundles third-party code listed in its notices.',
+    source: `https://github.com/microsoft/onnxruntime/tree/v${pkgVersion('onnxruntime-web')}`,
+    texts: [
+      { label: 'LICENSE', text: licenceText(null, 'onnxruntime-LICENSE.txt') },
+      { label: 'Third-party notices', text: licenceText(null, 'onnxruntime-ThirdPartyNotices.txt') },
+    ],
+  },
+  {
+    name: 'U²-Net small (u2netp)',
+    version: 'rembg ONNX export',
+    licence: 'Apache-2.0',
+    note: 'The background-removal model (the small U²-Net) by Xuebin Qin et al., downloaded the first time you remove a background. rembg\'s ONNX export of the authors\' weights, unchanged (u2netp.onnx, 4,574,861 bytes, sha256 309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8), from huggingface.co/BritishWerewolf/U-2-Netp (commit 7112208). Original weights and licence: github.com/xuebinqin/U-2-Net (commit ac7e1c8).',
+    source: 'https://huggingface.co/BritishWerewolf/U-2-Netp/blob/7112208dbac3a3642496c8d54e2f0f9bb3dc1dc8/onnx/model.onnx',
+    texts: [{ label: 'LICENSE (U-2-Net)', text: licenceText(null, 'u2net-LICENSE.txt') }],
+  },
+  {
+    name: 'Real-ESRGAN general x4v3 (realesr-general-x4v3)',
+    version: 'v0.2.5.0 weights, ONNX export',
+    licence: 'BSD-3-Clause',
+    note: 'The upscaling model by Xintao Wang et al., downloaded the first time you upscale an image. An ONNX export of the official weights (realesr-general-x4v3.pth from Real-ESRGAN release v0.2.5.0, sha256 8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292), unchanged (model.onnx, 4,866,420 bytes, sha256 7b10e80021ec3e0ff35017ae5022791879d93a799b2e201e1010a37510202266), from huggingface.co/vlad-grig/realesr-general-x4v3-onnx (commit 0e95d93). Original weights and licence: github.com/xinntao/Real-ESRGAN (commit a4abfb2).',
+    source: 'https://huggingface.co/vlad-grig/realesr-general-x4v3-onnx/blob/0e95d93e454cf6b5de9bdf5a1c9e7ec340d38231/onnx/model.onnx',
+    texts: [{ label: 'LICENSE (Real-ESRGAN)', text: licenceText(null, 'real-esrgan-LICENSE.txt') }],
+  },
+  {
+    name: 'Transformers.js (@huggingface/transformers)',
+    version: pkgVersion('@huggingface/transformers'),
+    licence: 'Apache-2.0',
+    note: 'Runs the speech model (Transcribe audio): audio features, the model, and the tokenizer. Part of this site, not loaded from a CDN; it reads the model only from files we downloaded for it.',
+    source: `https://github.com/huggingface/transformers.js/tree/${pkgVersion('@huggingface/transformers')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('@huggingface/transformers/LICENSE') }],
+  },
+  {
+    name: '@huggingface/tokenizers',
+    version: pkgVersion('@huggingface/tokenizers'),
+    licence: 'Apache-2.0',
+    note: 'Tokenizer, bundled inside Transformers.js.',
+    source: `https://www.npmjs.com/package/@huggingface/tokenizers/v/${pkgVersion('@huggingface/tokenizers')}?activeTab=code`,
+    texts: [{ label: 'LICENSE', text: licenceText('@huggingface/tokenizers/LICENSE') }],
+  },
+  {
+    name: '@huggingface/jinja',
+    version: pkgVersion('@huggingface/jinja'),
+    licence: 'MIT',
+    note: 'Template engine, bundled inside Transformers.js.',
+    source: `https://www.npmjs.com/package/@huggingface/jinja/v/${pkgVersion('@huggingface/jinja')}?activeTab=code`,
+    texts: [{ label: 'LICENSE', text: licenceText('@huggingface/jinja/LICENSE') }],
+  },
+  {
+    name: 'Whisper base',
+    version: 'ONNX export',
+    licence: 'Apache-2.0 (weights: MIT)',
+    note: `The speech recognition model by OpenAI, downloaded the first time you transcribe. The ONNX export of openai/whisper-base (Apache-2.0 on Hugging Face; the weights are MIT in github.com/openai/whisper) by huggingface.co/${WHISPER_REPO} (Apache-2.0, commit ${WHISPER_REVISION.slice(0, 7)}), unchanged. Computers that run it on WebAssembly download its 8-bit files; computers with WebGPU its 4-bit/16-bit ones. The files: ${whisperFiles}.`,
+    source: `https://huggingface.co/${WHISPER_REPO}/tree/${WHISPER_REVISION}`,
+    texts: [{ label: 'LICENSE (openai/whisper)', text: licenceText(null, 'whisper-LICENSE.txt') }],
+  },
+  {
+    name: 'mp4box.js',
+    version: pkgVersion('mp4box'),
+    licence: 'BSD-3-Clause',
+    note: 'Reads MP4 and MOV files (Compress video, Video to GIF): their tracks, and where each frame lies in the file.',
+    source: `https://github.com/gpac/mp4box.js/tree/v${pkgVersion('mp4box')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('mp4box/LICENSE') }],
+  },
+  {
+    name: 'mp4-muxer',
+    version: pkgVersion('mp4-muxer'),
+    licence: 'MIT',
+    note: 'Writes the compressed MP4 (Compress video).',
+    source: `https://github.com/Vanilagy/mp4-muxer/tree/v${pkgVersion('mp4-muxer')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('mp4-muxer/LICENSE') }],
+  },
+  {
+    name: 'gifenc',
+    version: pkgVersion('gifenc'),
+    licence: 'MIT',
+    note: 'Writes the GIF, with its own palette of 256 colours for each frame (Video to GIF).',
+    source: `https://github.com/mattdesl/gifenc/tree/v${pkgVersion('gifenc')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('gifenc/LICENSE.md') }],
+  },
+  ...(
+    [
+      ['zlibjs', 'MIT', 'LICENSE', 'Gunzip'],
+      ['regenerator-runtime', 'MIT', 'LICENSE', 'Async code support'],
+      ['idb-keyval', 'Apache-2.0', 'LICENCE', 'Storage helper'],
+      ['wasm-feature-detect', 'Apache-2.0', 'LICENSE', 'Picks the WebAssembly build'],
+      ['is-url', 'MIT', 'LICENSE-MIT', 'URL check'],
+      ['bmp-js', 'MIT', 'LICENSE', 'BMP image reading'],
+    ] as const
+  ).map(([pkg, licence, file, what]) => ({
+    name: pkg,
+    version: pkgVersion(pkg),
+    licence,
+    note: `${what}, bundled inside tesseract.js.`,
+    source: `https://www.npmjs.com/package/${pkg}/v/${pkgVersion(pkg)}?activeTab=code`,
+    texts: [{ label: 'LICENSE', text: licenceText(`${pkg}/${file}`) }],
+  })),
+  {
+    name: 'buffer and ieee754',
+    version: 'bundled in tesseract.js 7.0.0',
+    licence: 'MIT AND BSD-3-Clause',
+    note: 'Binary data helpers (Feross Aboukhadijeh), bundled inside the tesseract.js worker.',
+    source: 'https://github.com/feross/buffer',
+    texts: [{ label: 'Notices', text: licenceText('tesseract.js/dist/worker.min.js.LICENSE.txt') }],
+  },
+  {
     name: 'Astro',
     version: pkgVersion('astro'),
     licence: 'MIT',
     note: 'Static site framework.',
     source: `https://github.com/withastro/astro/tree/astro@${pkgVersion('astro')}`,
     texts: [{ label: 'LICENSE', text: licenceText('astro/LICENSE') }],
+  },
+  {
+    name: '@astrojs/sitemap',
+    version: pkgVersion('@astrojs/sitemap'),
+    licence: 'MIT',
+    note: 'Writes the sitemap when the site is built. Not part of the code your browser runs.',
+    source: `https://github.com/withastro/astro/tree/@astrojs/sitemap@${pkgVersion('@astrojs/sitemap')}`,
+    texts: [{ label: 'LICENSE', text: licenceText('@astrojs/sitemap/LICENSE') }],
   },
 ];
 ---

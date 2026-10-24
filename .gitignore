@@ -8,3 +8,4 @@ playwright-report/
 tests/fixtures/iphone-48mp.heic
 tests/fixtures/huge-63mp.jpg
 review/
+dist-model-quality/

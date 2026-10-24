@@ -1,0 +1,7 @@
+<script>
+  // Imported statically, so the page-load budget counts the island (its worker and libraries load with the first file).
+  import { mountGif } from '../ui/video-gif';
+  import { trackHooks } from '../ui/track';
+  const el = document.querySelector<HTMLElement>('[data-kind="video"][data-op="gif"]');
+  if (el) trackHooks(el.dataset.tool!, mountGif(el));
+</script>

@@ -38,6 +38,7 @@
   --icon-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 13V3M3.5 7.5 8 3l4.5 4.5'/%3E%3C/svg%3E");
   --icon-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3v10M3.5 8.5 8 13l4.5-4.5'/%3E%3C/svg%3E");
   --icon-x: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='m4 4 8 8M12 4l-8 8'/%3E%3C/svg%3E");
+  --icon-compare: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2317201c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5'/%3E%3C/svg%3E");
   --icon-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2354605b' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3Cpath d='M8 4.8v3.6M8 11.2v.01'/%3E%3C/svg%3E");
 }
 
@@ -217,7 +218,9 @@ textarea.text-input { resize: vertical; font-family: ui-monospace, SFMono-Regula
 /* Tool-level messages (invalid input, too much text, a large-file warning) read like v1's row errors: ink with an alert mark. */
 [data-kind='text'] .status, [data-kind='qr'] .status { font-size: 1rem; font-weight: 500; letter-spacing: 0; }
 [data-kind='qr'] .status { margin-bottom: var(--s3); }
-[data-kind='text'] .status::before, [data-kind='qr'] .status::before, [data-kind='pdf'] .error::before {
+[data-kind='text'] .status::before, [data-kind='qr'] .status::before, [data-kind='pdf'] .error::before, .video-trim .error::before,
+.ai-alert .error::before, .video-alert .error::before, [data-ai-result] > p:only-child::before, [data-ai-result] [data-low-confidence]::before,
+.ai-panel > p.note:nth-child(2)::before {
   content: ''; display: inline-block; width: 1em; height: 1em; margin-right: 0.4em; vertical-align: -0.15em;
   background: var(--icon-alert) center / contain no-repeat;
 }
@@ -288,6 +291,101 @@ pre[data-results]:empty { display: none; }
 .pdf-alert { display: grid; justify-items: start; gap: var(--s3); background: var(--tint); border-radius: var(--radius); padding: var(--s3); }
 .pdf-alert .error { margin: 0; font-size: 1rem; }
 [data-list], .pdf-done { margin-top: var(--s4); }
+/* AI tools: consent, downloading and working share one tinted panel; failures use the same shape as the PDF alert.
+   Compress video's working panel and alert are the same. */
+.ai-panel, .ai-alert, .video-panel, .video-alert { display: grid; justify-items: start; gap: var(--s3); background: var(--tint); border-radius: var(--radius); padding: var(--s3); margin-top: var(--s4); }
+.ai-panel p, .ai-alert p, .video-panel p, .video-alert p { margin: 0; }
+.ai-panel > p:first-child, .video-panel > p:first-child { color: var(--ink); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.ai-panel progress, .video-panel progress { display: block; width: 100%; height: 8px; accent-color: var(--accent); }
+/* While a bar runs, Cancel is a way out, not the next step: quiet, as on Compress video. The consent screen (no bar)
+   keeps Download and start as its primary action. */
+.ai-panel:has(> progress:not([hidden])) > .actions > .btn { background: transparent; color: var(--accent); border-color: var(--edge); }
+.ai-panel:has(> progress:not([hidden])) > .actions > .btn:hover { background: var(--paper); color: var(--accent-strong); }
+.ai-panel > .actions, .ai-alert > .actions { margin: 0; }
+.ai-panel > .actions:not(:has(> :not([hidden]))), .ai-alert > .actions:not(:has(> :not([hidden]))) { display: none; }
+.btn-quiet:is(.ai-panel *, .ai-alert *):hover { background: var(--paper); }
+/* The mobile data line is a warning to read before downloading: ink, with the alert mark. */
+.ai-panel > p.note:nth-child(2) { color: var(--ink); }
+.ai-alert .error, .video-alert .error { font-size: 1rem; }
+/* Output that comes while the tool works (the transcript so far): the latest lines stay in view. */
+.ai-live {
+  width: 100%; max-height: 12rem; overflow-y: auto; background: var(--paper);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s2) var(--s3);
+}
+.ai-live:empty { display: none; }
+.ai-live p { color: var(--ink); line-height: 1.5; overflow-wrap: anywhere; }
+/* Words, not code: a transcript reads in the body face. */
+textarea.text-input.prose { font-family: inherit; font-size: 1rem; }
+/* Upscale's scale choice belongs to the drop zone: it goes while a run or its result is on screen. */
+[data-kind='ai'] .drop[hidden] ~ [data-scale] { display: none; }
+/* ...and sits right under it, so "Try 2×" reads after the choice it points to, not between the two. */
+[data-kind='ai']:has(> [data-scale]) { display: flex; flex-direction: column; }
+[data-kind='ai']:has(> [data-scale]) > .drop { order: -2; margin-top: 0; } /* flex: no margin collapsing with the island's own */
+[data-kind='ai'] > [data-scale] { order: -1; }
+/* The result, then one row of actions: the tool's own (Download, Copy) first, Start over beside them, as on Merge PDF.
+   Notes that follow the tool's buttons (Language: English) go under the row. */
+.ai-done { margin-top: var(--s4); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s3); justify-items: start; align-items: center; }
+.ai-done > [data-ai-result] { display: contents; }
+.ai-done [data-ai-result] > * { grid-column: 1 / -1; }
+.ai-done [data-ai-result] > .actions { grid-column: 1; }
+.ai-done [data-ai-result] > .actions ~ * { order: 1; }
+.ai-done > .actions { grid-column: 2; margin: 0; }
+/* Transcribe audio's four exports fill the row: Start over goes under them. */
+.ai-done:has([data-ai-result] > .actions > .btn:nth-of-type(3)) > .actions,
+.ai-done:has([data-ai-result] > .actions > .btn:nth-of-type(3)) [data-ai-result] > .actions { grid-column: 1 / -1; }
+/* No text, no speech: Start over is the only thing to do, so it is the primary button. */
+.ai-done:not(:has([data-ai-result] > .actions)) > .actions { grid-column: 1 / -1; }
+.ai-done:not(:has([data-ai-result] > .actions)) .btn-quiet { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.ai-done:not(:has([data-ai-result] > .actions)) .btn-quiet:hover { background: var(--accent-strong); color: var(--accent-ink); }
+/* Compress video: the file and its settings under the (compact) drop zone; the result is the two sizes. */
+.video-file, .video-done { margin-top: var(--s4); display: grid; gap: var(--s3); }
+.video-file .settings, .video-done .note, [data-kind='video'] .actions { margin: 0; }
+/* Three choices each: the legend sits above them, so a narrow screen wraps whole choices, not the legend's row. */
+.video-file .toggle { column-gap: var(--s4); row-gap: 0; }
+.video-file .toggle legend { float: none; width: 100%; margin: 0 0 var(--s1); }
+.video-sizes { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+/* Video to GIF: the preview to find the moment in, Start and End side by side, and the GIF itself as the result. */
+.video-preview, .gif-result { display: block; max-width: 100%; max-height: 60vh; border-radius: var(--radius); background: var(--tint); }
+.video-preview { width: 100%; }
+.gif-result { width: auto; height: auto; }
+.video-trim { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: center; }
+.video-trim legend { width: 100%; margin: 0 0 var(--s1); }
+.video-trim label { display: inline-flex; align-items: center; gap: var(--s2); font-weight: 500; }
+.video-trim .text-input { width: 6.5rem; font-variant-numeric: tabular-nums; }
+.video-trim .error { flex: 1 1 100%; margin: 0; }
+[data-ai-result] { display: grid; gap: var(--s3); justify-items: start; }
+[data-ai-result] .field, [data-ai-result] .actions { width: 100%; margin: 0; }
+[data-ai-result] .note { margin: 0; }
+[data-ai-result] [data-low-confidence] { color: var(--ink); }
+/* Before/after comparison (src/ui/compare.ts): the box keeps the images' shape and is never taller than 70% of the
+   screen; the "before" photo shows left of the divider. */
+.compare {
+  --pos: 50%;
+  position: relative; width: min(100%, calc(70vh * var(--w) / var(--h))); aspect-ratio: var(--ratio);
+  border-radius: var(--radius); overflow: hidden; touch-action: pan-y; cursor: ew-resize; user-select: none;
+}
+.compare img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.compare-stage { position: absolute; inset: 0; }
+.compare-stage[data-checkerboard] { background: repeating-conic-gradient(#e4e8e6 0 25%, var(--paper) 0 50%) 0 0 / 16px 16px; }
+.compare-before { clip-path: inset(0 calc(100% - var(--pos)) 0 0); }
+.compare-handle { position: absolute; top: 0; bottom: 0; left: var(--pos); width: 2px; margin-left: -1px; background: var(--paper); outline: 1px solid var(--ink-muted); }
+/* The grip: a white disc with left/right chevrons, edged in muted ink so it holds on light and dark photos alike. */
+.compare-handle::after {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; translate: -50% -50%;
+  border-radius: 50%; border: 2px solid var(--ink-muted);
+  background: var(--paper) var(--icon-compare) center / 18px no-repeat;
+}
+/* Focus is a ring round the grip (hover changes nothing), so it never looks like the resting handle. */
+.compare-handle:focus-visible { outline: 1px solid var(--accent); outline-offset: 0; border-radius: 0; }
+/* Three rings so the indicator holds on any photo (WCAG 1.4.11): the disc's edge in accent, a paper halo, then an
+   accent ring outside it. No box-shadow in this system, so the halo is the disc's outline and the outer ring a pseudo. */
+.compare-handle:focus-visible::after { border-color: var(--accent); outline: 2px solid var(--paper); outline-offset: 0; }
+.compare-handle:focus-visible::before {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; translate: -50% -50%;
+  border-radius: 50%; border: 2px solid var(--accent);
+}
+.bg-options { margin: 0; }
+.bg-options .bg-colour { width: 44px; height: 44px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); cursor: pointer; align-self: center; }
 .pdf-rows { margin-bottom: var(--s3); }
 .pdf-rows .row { grid-template-columns: minmax(0, 1fr) auto; }
 .row-tools { display: flex; gap: var(--s1); }
@@ -321,6 +419,10 @@ pre[data-results]:empty { display: none; }
 .pdf-extract { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
 .pdf-extract .text-input { flex: 1 1 10rem; max-width: 16rem; }
 .text-input:disabled { background: var(--paper); color: var(--ink-muted); border-color: var(--line); cursor: not-allowed; }
+.pdf-progress { display: block; width: 100%; height: 8px; accent-color: var(--accent); margin-top: var(--s3); }
+.pdf-try { display: inline-block; margin: 0 0 var(--s3); }
+.pdf-inline { display: flex; flex-wrap: wrap; gap: 0 var(--s4); }
+.pdf-inline legend { width: 100%; }
 .pdf-mode .error { margin: var(--s2) 0 0; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -350,6 +452,14 @@ pre[data-results]:empty { display: none; }
   .qr-preview { width: 100%; }
   .actions .gps { flex: 1 1 100%; text-align: center; }
   .drop-compact { padding: 0; }
-  .pdf-alert { justify-items: stretch; }
+  .pdf-alert, .ai-panel, .ai-alert, .video-panel, .video-alert { justify-items: stretch; }
+  .ai-done { grid-template-columns: minmax(0, 1fr); justify-items: stretch; }
+  .ai-done [data-ai-result] > .actions, .ai-done > .actions { grid-column: 1; }
+  .ai-done .compare { justify-self: start; }
+  .ai-live { max-height: 9rem; }
+  /* Trim: Start and End each on a row, their boxes lined up and wide enough to tap. */
+  .video-trim { display: grid; gap: var(--s2); }
+  .video-trim label { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
+  .video-trim .text-input { width: 100%; }
   .pdf-extract .text-input { max-width: none; }
 }

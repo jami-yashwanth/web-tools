@@ -7,9 +7,17 @@ export type ToolSlug =
   | 'json-formatter'
   | 'base64-encode-decode'
   | 'jwt-decoder'
-  | 'qr-code-generator';
+  | 'qr-code-generator'
+  | 'remove-background'
+  | 'image-to-text'
+  | 'upscale-image'
+  | 'transcribe-audio'
+  | 'pdf-to-jpg'
+  | 'jpg-to-pdf'
+  | 'compress-video'
+  | 'video-to-gif';
 export type ImageSlug = 'heic-to-jpg' | 'compress-image' | 'webp-to-jpg';
-export type Category = 'image' | 'pdf' | 'developer' | 'qr';
+export type Category = 'image' | 'pdf' | 'ai' | 'video' | 'developer' | 'qr';
 export type OutFormat = 'jpg' | 'png' | 'webp';
 export type InType = 'heic' | 'jpg' | 'png' | 'webp';
 
@@ -34,14 +42,22 @@ export type ImageTool = ToolBase & {
   defaults: { format?: OutFormat; quality: number };
   emptyCopy: string;
 };
-export type PdfTool = ToolBase & { kind: 'pdf'; op: 'merge' | 'split' };
+export type PdfTool = ToolBase & { kind: 'pdf'; op: 'merge' | 'split' | 'to-images' | 'from-images' };
+export type AiTool = ToolBase & {
+  kind: 'ai';
+  model: 'bg' | 'ocr' | 'upscale' | 'whisper';
+  accepts: string; // value for <input accept>
+};
+export type VideoTool = ToolBase & { kind: 'video'; op: 'compress' | 'gif' };
 export type TextTool = ToolBase & { kind: 'text'; transform: 'json' | 'base64' | 'jwt' };
 export type QrTool = ToolBase & { kind: 'qr' };
-export type Tool = ImageTool | PdfTool | TextTool | QrTool;
+export type Tool = ImageTool | PdfTool | AiTool | VideoTool | TextTool | QrTool;
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   image: 'Image',
   pdf: 'PDF',
+  ai: 'AI',
+  video: 'Video',
   developer: 'Developer',
   qr: 'QR code',
 };
@@ -178,7 +194,7 @@ const IMAGE_TOOLS: ImageTool[] = [
   },
 ];
 
-const OTHER_TOOLS: (PdfTool | TextTool | QrTool)[] = [
+const OTHER_TOOLS: (PdfTool | AiTool | VideoTool | TextTool | QrTool)[] = [
   {
     kind: 'pdf',
     op: 'merge',
@@ -414,7 +430,328 @@ const OTHER_TOOLS: (PdfTool | TextTool | QrTool)[] = [
   },
 ];
 
-export const TOOLS: Tool[] = [...IMAGE_TOOLS, ...OTHER_TOOLS];
+const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
+
+const ROUND_3_TOOLS: (PdfTool | AiTool | VideoTool)[] = [
+  {
+    kind: 'ai',
+    model: 'bg',
+    category: 'ai',
+    slug: 'remove-background',
+    title: 'Remove Background from Image - Private, No Upload',
+    description:
+      'Remove the background from a photo with on-device AI. Nothing is uploaded. Get a transparent PNG, or a white or coloured background. Free, no sign-up.',
+    h1: 'Remove background',
+    subhead: 'Cut the background out of a photo with AI that runs on your device. Nothing is uploaded.',
+    accepts: IMAGE_ACCEPT,
+    howTo: [
+      'Drop a JPG, PNG or WebP photo onto the page, or choose one from your device.',
+      'The first time, the AI model downloads and is cached for next time. Then wait while it works.',
+      'Compare before and after, choose a background, and download the PNG.',
+    ],
+    faq: [
+      {
+        q: 'Is my photo uploaded anywhere?',
+        a: 'No. The AI model runs in your browser, on your device. Your photo, its name and its pixels never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'Why does it download a model the first time?',
+        a: 'The AI model is about 5 MB, and the engine that runs it about 14 MB. Both are downloaded once and cached in your browser, so later visits start straight away. The download contains none of your data.',
+      },
+      {
+        q: 'What do I get?',
+        a: 'A PNG with a transparent background by default. You can also put the subject on white or on a colour you pick. The PNG is named after your photo, with -no-bg added.',
+      },
+      {
+        q: 'How good are the cut-outs?',
+        a: 'Results are best on photos with one clear subject, such as a person, a product or a pet, against a plain background. Fine detail like hair, fur and glass can be rough, and busy backgrounds can confuse the model. Check the result before you use it.',
+      },
+      {
+        q: 'Is there a limit on photo size?',
+        a: 'Photos larger than 25 megapixels are processed at 25 megapixels, and we tell you when that happens. Very large photos may be slow on older phones.',
+      },
+    ],
+    related: ['upscale-image', 'image-to-text', 'compress-image'],
+  },
+  {
+    kind: 'ai',
+    model: 'ocr',
+    category: 'ai',
+    slug: 'image-to-text',
+    title: 'Image to Text (OCR) - Extract Text Privately, No Upload',
+    description:
+      'Extract English text from a photo or screenshot with on-device OCR. Nothing is uploaded. Copy the text or download it as a .txt file. Free, no sign-up.',
+    h1: 'Image to text',
+    subhead: 'Read the text in a photo or screenshot on your device. English only for now. Nothing is uploaded.',
+    accepts: IMAGE_ACCEPT,
+    howTo: [
+      'Drop an image with text onto the page, or choose one from your device.',
+      'The first time, the text reader downloads and is cached for next time. Then wait while it reads.',
+      'Check the text, then copy it or download it as a .txt file.',
+    ],
+    faq: [
+      {
+        q: 'Is my image uploaded anywhere?',
+        a: 'No. The text is read in your browser, on your device. Your image and the text found in it never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'Why does it download something the first time?',
+        a: 'The English text model is about 4 MB. It is downloaded once and cached in your browser, so later visits start straight away. The download contains none of your data.',
+      },
+      {
+        q: 'Which languages does it read?',
+        a: 'English only for now. Text in other languages will usually come out as nonsense.',
+      },
+      {
+        q: 'How accurate is it?',
+        a: 'Clear, printed text in a straight, well-lit image works best. Handwriting, curved pages, blur and low contrast cause mistakes. When we are not confident, we tell you to check the text before using it.',
+      },
+      {
+        q: 'What if there is no text?',
+        a: 'We say so. Try a sharper or larger image, and make sure the text is the right way up.',
+      },
+    ],
+    related: ['remove-background', 'upscale-image', 'pdf-to-jpg'],
+  },
+  {
+    kind: 'ai',
+    model: 'upscale',
+    category: 'ai',
+    slug: 'upscale-image',
+    title: 'Upscale Image - Enlarge Photos with AI, No Upload',
+    description:
+      'Enlarge a small image up to 4x with on-device AI and see before and after. Nothing is uploaded. Download a PNG. Free, private and no sign-up needed.',
+    h1: 'Upscale image',
+    subhead: 'Make a small image bigger and sharper with AI that runs on your device. Nothing is uploaded.',
+    accepts: IMAGE_ACCEPT,
+    howTo: [
+      'Drop a JPG, PNG or WebP image onto the page, or choose one from your device.',
+      'Choose how much larger: 2×, or 4× on devices that support it. The first time, the AI model downloads and is cached for next time.',
+      'Compare before and after, then download the PNG.',
+    ],
+    faq: [
+      {
+        q: 'Is my image uploaded anywhere?',
+        a: 'No. The AI model runs in your browser, on your device. Your image never leaves your device and is never sent to a server.',
+      },
+      {
+        q: 'Why does it download a model the first time?',
+        a: 'The AI model is about 5 MB, and the engine that runs it about 14 MB. Both are downloaded once and cached in your browser, so later visits start straight away. The download contains none of your data.',
+      },
+      {
+        q: 'Why is 4× not offered on my device?',
+        a: 'A 4× image has four times as many pixels as a 2× one and needs much more memory, so 4× is not offered on phones or on devices with less than 8 GB of memory. 2× is offered whenever the tool can run.',
+      },
+      {
+        q: 'Will it add real detail?',
+        a: 'It adds believable detail, which makes edges and textures look cleaner. It cannot recover what was never in the photo, so very small or blurry images improve less.',
+      },
+      {
+        q: 'Is there a size limit?',
+        a: 'The upscaled image is capped at 16 megapixels. If your image is too large for that, we tell you, and suggest 2×. Large images can take a while on older devices.',
+      },
+    ],
+    related: ['remove-background', 'image-to-text', 'compress-image'],
+  },
+  {
+    kind: 'ai',
+    model: 'whisper',
+    category: 'ai',
+    slug: 'transcribe-audio',
+    title: 'Transcribe Audio to Text - Private, No Upload',
+    description:
+      'Turn an audio or video file into text with on-device AI. Nothing is uploaded. Copy it or download .txt, .srt and .vtt captions. Free, no sign-up needed.',
+    h1: 'Transcribe audio',
+    subhead: 'Turn speech into text with AI that runs on your device. Your recordings are never uploaded.',
+    accepts: 'audio/*,video/*,.mp3,.m4a,.wav,.ogg,.mp4,.mov,.webm',
+    howTo: [
+      'Drop an audio or video file onto the page, or choose one from your device.',
+      'The first time, the AI model downloads and is cached for next time. Then watch the transcript appear.',
+      'Copy the text, or download it as .txt, .srt or .vtt.',
+    ],
+    faq: [
+      {
+        q: 'Is my recording uploaded anywhere?',
+        a: 'No. The AI model runs in your browser, on your device. Your audio, its name and the transcript never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'Why does it download a model the first time?',
+        a: 'The AI model is about 80 MB, and the engine that runs it 14 to 27 MB, depending on your device. They are downloaded once and cached in your browser, so later visits start straight away. The download contains none of your data.',
+      },
+      {
+        q: 'How long can the audio be?',
+        a: 'Up to 30 minutes, in a file of up to 300 MB, for now. Your device does the work, so it can take about as long as the audio on slower devices. The transcript appears as it goes.',
+      },
+      {
+        q: 'Which files and languages work?',
+        a: 'Common audio formats such as MP3, M4A, WAV and OGG, and the sound in MP4, MOV and WebM videos where your browser can read it. The language is detected for you, and accuracy is best for English.',
+      },
+      {
+        q: 'What are .srt and .vtt files?',
+        a: 'They are caption files with timestamps. Video editors and players such as YouTube can use them as subtitles. Use .txt if you only want the words.',
+      },
+    ],
+    related: ['image-to-text', 'remove-background', 'compress-video'],
+  },
+  {
+    kind: 'pdf',
+    op: 'to-images',
+    category: 'pdf',
+    slug: 'pdf-to-jpg',
+    title: 'PDF to JPG - Convert PDF Pages to Images, No Upload',
+    description:
+      'Turn each page of a PDF into a JPG or PNG image in your browser. Choose 150 or 300 dpi. Nothing is uploaded. Free, private and no sign-up needed.',
+    h1: 'PDF to JPG',
+    subhead: 'Turn PDF pages into JPG or PNG images. Your files never leave your device.',
+    howTo: [
+      'Drop a PDF onto the page, or choose one from your device.',
+      'Pick JPG or PNG, and Standard (150 dpi) or High (300 dpi) quality.',
+      'Select Convert, then download the image, or all pages in one ZIP file.',
+    ],
+    faq: [
+      {
+        q: 'Is my PDF uploaded anywhere?',
+        a: 'No. Pages are drawn in your browser. Your file, its name and its contents never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'What do I get?',
+        a: 'One image per page. A one-page PDF gives a single image. A longer PDF gives a ZIP file with an image for each page, named after your PDF with the page number.',
+      },
+      {
+        q: 'Should I choose 150 or 300 dpi?',
+        a: 'Standard (150 dpi) suits screens and sharing. High (300 dpi) suits printing but makes bigger files. Very large pages fall back to 150 dpi, and we tell you when that happens.',
+      },
+      {
+        q: 'JPG or PNG?',
+        a: 'JPG is smaller and good for pages with photos. PNG is lossless and keeps text and line art crisp, at a larger file size.',
+      },
+      {
+        q: 'Why can I not convert a password-protected PDF?',
+        a: 'We cannot read the pages of an encrypted file, and we will not bypass the protection. Remove the password in the app you created it with, then try again.',
+      },
+    ],
+    related: ['jpg-to-pdf', 'merge-pdf', 'image-to-text'],
+  },
+  {
+    kind: 'pdf',
+    op: 'from-images',
+    category: 'pdf',
+    slug: 'jpg-to-pdf',
+    title: 'JPG to PDF - Combine Images into a PDF, No Upload',
+    description:
+      'Put JPG, PNG, WebP or HEIC images into one PDF in your browser. Choose the order and page size. Nothing is uploaded. Free, private and no sign-up needed.',
+    h1: 'JPG to PDF',
+    subhead: 'Combine images into one PDF. Your images never leave your device.',
+    howTo: [
+      'Drop your images onto the page, or choose them from your device.',
+      'Put them in the order you want, and pick a page size.',
+      'Select Create PDF, then download the file.',
+    ],
+    faq: [
+      {
+        q: 'Are my images uploaded anywhere?',
+        a: 'No. The PDF is built in your browser. Your images, their names and their pixels never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'Which image types can I use?',
+        a: 'JPG, PNG, WebP and HEIC. Each image becomes one page, in the order shown in the list.',
+      },
+      {
+        q: 'What page sizes are there?',
+        a: 'Fit to image (the default) makes each page the size of its image. A4 and Letter place each image in the middle of a standard page with a margin around it.',
+      },
+      {
+        q: 'Will my images lose quality?',
+        a: 'JPG images are put into the PDF as they are, without being compressed again. Other types are stored losslessly, so the PDF can be larger than the originals.',
+      },
+      {
+        q: 'Is there a limit on the number of images?',
+        a: 'There is no fixed limit. Your device does the work, so hundreds of large photos at once may be slow on older phones.',
+      },
+    ],
+    related: ['pdf-to-jpg', 'merge-pdf', 'compress-image'],
+  },
+  {
+    kind: 'video',
+    op: 'compress',
+    category: 'video',
+    slug: 'compress-video',
+    title: 'Compress Video - Make MP4 Files Smaller, No Upload',
+    description:
+      'Make a video file smaller in your browser. Pick the quality and size, and download an MP4. Nothing is uploaded. For short clips. Free, no sign-up needed.',
+    h1: 'Compress video',
+    subhead: 'Make a short video smaller. It is compressed on your device and never uploaded.',
+    howTo: [
+      'Drop an MP4 or MOV video onto the page, or choose one from your device.',
+      'Choose the quality and the maximum width.',
+      'Select Compress, then download the MP4.',
+    ],
+    faq: [
+      {
+        q: 'Is my video uploaded anywhere?',
+        a: 'No. Compression runs in your browser, on your device. Your video, its name and its frames never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'What are the limits?',
+        a: 'Videos up to 2 minutes and 200 MB for now. Your device does the work, so longer clips would be slow and could run out of memory.',
+      },
+      {
+        q: 'Why does it say my browser cannot encode video?',
+        a: 'Compression uses the video encoder built into your browser. Chrome, Edge, Safari 17 and later, and Firefox 130 and later have it. Older browsers do not.',
+      },
+      {
+        q: 'How much smaller will it get?',
+        a: 'It depends on the video. Phone videos often shrink a lot, but one that is already compressed may barely change. We show the size before and after.',
+      },
+      {
+        q: 'Which videos work?',
+        a: 'MP4 and MOV files with common video formats such as H.264. If your video uses a format we cannot read, we tell you.',
+      },
+    ],
+    related: ['video-to-gif', 'transcribe-audio'],
+  },
+  {
+    kind: 'video',
+    op: 'gif',
+    category: 'video',
+    slug: 'video-to-gif',
+    title: 'Video to GIF - Make a GIF from a Clip, No Upload',
+    description:
+      'Turn a short part of a video into an animated GIF in your browser. Trim it, pick the size and frame rate. Nothing is uploaded. Free, no sign-up needed.',
+    h1: 'Video to GIF',
+    subhead: 'Turn a short clip into an animated GIF. It is made on your device and never uploaded.',
+    howTo: [
+      'Drop an MP4 or MOV video onto the page, or choose one from your device.',
+      'Set where the clip starts and ends, up to 15 seconds, then pick the width and frame rate.',
+      'Select Make GIF, then download it.',
+    ],
+    faq: [
+      {
+        q: 'Is my video uploaded anywhere?',
+        a: 'No. The GIF is made in your browser, on your device. Your video, its name and its frames never leave your device and are never sent to a server.',
+      },
+      {
+        q: 'How long can a GIF be?',
+        a: 'Up to 15 seconds. GIF files get large quickly, so a short clip works best.',
+      },
+      {
+        q: 'What size and frame rate should I pick?',
+        a: 'Width 320 with 10 frames per second gives the smallest file. Width 480 with 15 frames per second looks smoother and sharper but is larger.',
+      },
+      {
+        q: 'Why do the colours look different from my video?',
+        a: 'A GIF can only use 256 colours in each frame, so smooth gradients can look banded. That is a limit of the GIF format.',
+      },
+      {
+        q: 'Does the GIF have sound?',
+        a: 'No. GIF files cannot carry sound, so only the picture is kept.',
+      },
+    ],
+    related: ['compress-video', 'compress-image'],
+  },
+];
+
+export const TOOLS: Tool[] = [...IMAGE_TOOLS, ...OTHER_TOOLS, ...ROUND_3_TOOLS];
 
 export function getTool(slug: ToolSlug): Tool {
   const tool = TOOLS.find((t) => t.slug === slug);

@@ -61,11 +61,15 @@ export function flattenOnWhite(p: Pixels): Pixels {
  */
 export function downscaleTo(p: Pixels, megapixels: number): Pixels {
   const limit = megapixels * 1e6;
-  const { width: sw, height: sh, data: src } = p;
+  const { width: sw, height: sh } = p;
   if (sw * sh <= limit) return p;
   const scale = Math.sqrt(limit / (sw * sh));
-  const dw = Math.max(1, Math.floor(sw * scale));
-  const dh = Math.max(1, Math.floor(sh * scale));
+  return resizeBox(p, Math.max(1, Math.floor(sw * scale)), Math.max(1, Math.floor(sh * scale)));
+}
+
+/** Shrink to exactly `dw` × `dh` (each no larger than the source) with the same alpha-weighted box filter. */
+export function resizeBox(p: Pixels, dw: number, dh: number): Pixels {
+  const { width: sw, height: sh, data: src } = p;
   const out = new Uint8ClampedArray(dw * dh * 4);
   const bx = sw / dw;
   const by = sh / dh;

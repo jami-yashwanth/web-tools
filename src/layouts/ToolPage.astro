@@ -2,6 +2,8 @@
 import Base from './Base.astro';
 import ImageTool from '../components/ImageTool.astro';
 import PdfTool from '../components/PdfTool.astro';
+import AiTool from '../components/AiTool.astro';
+import VideoTool from '../components/VideoTool.astro';
 import TextTool from '../components/TextTool.astro';
 import QrTool from '../components/QrTool.astro';
 import { getTool, type Tool } from '../tools';
@@ -26,6 +28,8 @@ const jsonLd = {
 
   {tool.kind === 'image' && <ImageTool tool={tool} />}
   {tool.kind === 'pdf' && <PdfTool tool={tool} />}
+  {tool.kind === 'ai' && <AiTool tool={tool} />}
+  {tool.kind === 'video' && <VideoTool tool={tool} />}
   {tool.kind === 'text' && <TextTool tool={tool} />}
   {tool.kind === 'qr' && <QrTool tool={tool} />}
 

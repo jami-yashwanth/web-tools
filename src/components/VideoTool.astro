@@ -1,0 +1,95 @@
+---
+import type { VideoTool } from '../tools';
+import VideoCompressScript from './VideoCompressScript.astro';
+import VideoGifScript from './VideoGifScript.astro';
+
+interface Props { tool: VideoTool }
+const { tool } = Astro.props;
+const compress = tool.op === 'compress';
+const gif = tool.op === 'gif';
+// Spec §4 empty state. MP4 and MOV only this round: WebM is not read (Task 8 ruling).
+const ACCEPT = 'video/mp4,video/quicktime,.mp4,.mov,.m4v';
+const verb = compress ? 'Compressing' : 'Making GIF';
+---
+<div data-kind="video" data-tool={tool.slug} data-op={tool.op}>
+  <div class="drop">
+    <p class="drop-title">Drop a video here</p>
+    <label class="btn">
+      Choose video
+      <input type="file" accept={ACCEPT} />
+    </label>
+    <p class="privacy">Converted on your device. Your videos are never uploaded.</p>
+  </div>
+  {/* The island (src/ui/video-shell.ts) shows one of these at a time. */}
+  <div class="video-alert" role="alert" data-video-alert hidden>
+    <p class="error" data-alert-text></p>
+    <a class="link" data-try hidden></a>
+    <button type="button" class="btn" data-retry hidden>Try again</button>
+  </div>
+  <div class="video-file" data-video-file hidden>
+    <div class="info">
+      <span class="name" data-name></span>
+      <span class="size" data-meta></span>
+    </div>
+    {compress && (
+      <>
+        <fieldset class="settings toggle">
+          <legend>Quality</legend>
+          <label><input type="radio" name="preset" value="small" />Smaller file</label>
+          <label><input type="radio" name="preset" value="balanced" checked />Balanced</label>
+          <label><input type="radio" name="preset" value="better" />Better quality</label>
+        </fieldset>
+        <fieldset class="settings toggle">
+          <legend>Max width</legend>
+          <label><input type="radio" name="resolution" value="" checked />Original</label>
+          <label><input type="radio" name="resolution" value="1080" />1080p</label>
+          <label><input type="radio" name="resolution" value="720" />720p</label>
+        </fieldset>
+      </>
+    )}
+    {gif && (
+      <>
+        <video class="video-preview" data-preview muted controls playsinline preload="metadata"></video>
+        <fieldset class="settings video-trim">
+          <legend>Trim, up to 15 seconds</legend>
+          <label>Start <input type="number" class="text-input" min="0" step="0.1" inputmode="decimal" aria-describedby="video-trim-error" data-start /> seconds</label>
+          <label>End <input type="number" class="text-input" min="0" step="0.1" inputmode="decimal" aria-describedby="video-trim-error" data-end /> seconds</label>
+          <p class="error" id="video-trim-error" role="alert" data-trim-error hidden></p>
+        </fieldset>
+        <fieldset class="settings toggle">
+          <legend>Width</legend>
+          <label><input type="radio" name="width" value="320" checked />320 px</label>
+          <label><input type="radio" name="width" value="480" />480 px</label>
+        </fieldset>
+        <fieldset class="settings toggle">
+          <legend>Frame rate</legend>
+          <label><input type="radio" name="fps" value="10" checked />10 fps</label>
+          <label><input type="radio" name="fps" value="15" />15 fps</label>
+        </fieldset>
+      </>
+    )}
+    <div class="actions">
+      <button type="button" class="btn" data-run disabled>{compress ? 'Compress' : 'Make GIF'}</button>
+    </div>
+  </div>
+  <div class="video-panel" data-video-panel hidden>
+    <p data-panel-text></p>
+    <progress max="100" value="0" aria-label={verb}></progress>
+    <button type="button" class="btn btn-quiet" data-cancel>Cancel</button>
+  </div>
+  <p class="status" role="status" aria-live="polite" data-status></p>
+  <div data-results>
+    <div class="video-done" data-video-done hidden>
+      {gif && <img class="gif-result" data-gif alt="Your GIF" />}
+      <p class="video-sizes" data-video-sizes></p>
+      {compress && <p class="note" data-video-notes hidden></p>}
+      {gif && <p class="note" data-gif-note hidden></p>}
+      <div class="actions">
+        <button type="button" class="btn" data-download>{compress ? 'Download MP4' : 'Download GIF'}</button>
+        <button type="button" class="btn btn-quiet" data-reset>Start over</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{compress ? <VideoCompressScript /> : <VideoGifScript />}

@@ -1,25 +1,39 @@
 ---
-import type { PdfTool } from '../tools';
+import PdfImagesScript from './PdfImagesScript.astro';
+import PdfMergeSplitScript from './PdfMergeSplitScript.astro';
+import { getTool, type PdfTool } from '../tools';
 
 interface Props { tool: PdfTool }
 const { tool } = Astro.props;
 const merge = tool.op === 'merge';
-// Spec §4 empty states. The island (src/ui/pdf.ts) takes over as files arrive.
-const title = merge ? 'Drop PDF files here' : 'Drop a PDF here';
-const choose = merge ? 'Choose PDFs' : 'Choose PDF';
-const privacy = merge
-  ? 'Merged on your device. Your files are never uploaded.'
-  : 'Split on your device. Your files are never uploaded.';
-// Gzipped size of the PDF worker and the pdf-lib chunk it loads on first use: measured from the build
-// (tests/unit/build-output.test.ts checks it still matches).
-const ENGINE_SIZE = '0.2 MB';
+// All four ops are driven by an island: Merge and Split by src/ui/pdf.ts, PDF to JPG and JPG to PDF by src/ui/pdf-images.ts.
+const toImages = tool.op === 'to-images';
+const fromImages = tool.op === 'from-images';
+const imageOp = toImages || fromImages;
+// An image dropped on PDF to JPG is sent to the tool that takes images.
+const tryTool = { href: '/jpg-to-pdf/', h1: getTool('jpg-to-pdf').h1 };
+// Spec §4 empty states.
+const title = { merge: 'Drop PDF files here', split: 'Drop a PDF here', 'to-images': 'Drop a PDF here', 'from-images': 'Drop images here' }[tool.op];
+const choose = { merge: 'Choose PDFs', split: 'Choose PDF', 'to-images': 'Choose PDF', 'from-images': 'Choose images' }[tool.op];
+const privacy = {
+  merge: 'Merged on your device. Your files are never uploaded.',
+  split: 'Split on your device. Your files are never uploaded.',
+  'to-images': 'Converted on your device. Your PDFs are never uploaded.',
+  'from-images': 'Converted on your device. Your images are never uploaded.',
+}[tool.op];
+const accept = fromImages
+  ? '.jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif'
+  : 'application/pdf,.pdf';
+// Gzipped size of the worker and the library chunks it loads on first use: pdf-lib for the PDF worker, pdf.js (two
+// modules) for PDF to JPG. Measured from the build (tests/unit/build-output.test.ts checks it still matches).
+const ENGINE_SIZE = toImages ? '0.5 MB' : '0.2 MB';
 ---
 <div data-kind="pdf" data-tool={tool.slug} data-op={tool.op} data-codec-size={ENGINE_SIZE}>
   <div class="drop">
     <p class="drop-title">{title}</p>
     <label class="btn">
       {choose}
-      <input type="file" accept="application/pdf,.pdf" {...(merge ? { multiple: true } : {})} />
+      <input type="file" accept={accept} {...(merge || fromImages ? { multiple: true } : {})} />
     </label>
     <p class="privacy">{privacy}</p>
   </div>
@@ -32,13 +46,22 @@ const ENGINE_SIZE = '0.2 MB';
     <button type="button" class="btn" data-retry>Try again</button>
   </div>
   <p class="status" role="status" aria-live="polite" data-status></p>
+  <progress class="pdf-progress" max="100" aria-label="Progress" data-progress hidden></progress>
   <div data-results>
-    {merge ? (
+    {merge || fromImages ? (
       <div data-list hidden>
         <ul class="rows pdf-rows" data-rows></ul>
-        <p class="note pdf-hint" data-hint hidden>Add at least one more PDF to merge.</p>
+        {merge && <p class="note pdf-hint" data-hint hidden>Add at least one more PDF to merge.</p>}
+        {fromImages && (
+          <fieldset class="settings pdf-mode pdf-inline" data-options>
+            <legend>Page size</legend>
+            <label><input type="radio" name="size" value="fit" checked />Fit to image</label>
+            <label><input type="radio" name="size" value="a4" />A4</label>
+            <label><input type="radio" name="size" value="letter" />Letter</label>
+          </fieldset>
+        )}
         <div class="actions">
-          <button type="button" class="btn" data-run disabled>Merge PDFs</button>
+          <button type="button" class="btn" data-run disabled>{merge ? 'Merge PDFs' : 'Create PDF'}</button>
         </div>
       </div>
     ) : (
@@ -48,17 +71,38 @@ const ENGINE_SIZE = '0.2 MB';
           <span class="size" data-meta></span>
         </div>
         <p class="error" role="alert" data-file-error hidden></p>
-        <fieldset class="settings pdf-mode" aria-label="How to split" data-options>
-          <label><input type="radio" name="mode" value="every" checked data-mode />Every page as a separate file</label>
-          <div class="pdf-extract">
-            <label><input type="radio" name="mode" value="ranges" data-mode />Extract pages:</label>
-            <input type="text" class="text-input" placeholder="1-3, 5" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Pages to extract" aria-describedby="pdf-range-error" disabled data-ranges />
-          </div>
-          <p class="error" id="pdf-range-error" role="alert" data-range-error hidden></p>
-        </fieldset>
-        <div class="actions" data-options>
-          <button type="button" class="btn" data-run disabled>Split PDF</button>
-        </div>
+        {toImages && <a class="link pdf-try" data-try href={tryTool.href} hidden>Try {tryTool.h1} →</a>}
+        {toImages ? (
+          <>
+            <fieldset class="settings pdf-mode pdf-inline" data-options>
+              <legend>Format</legend>
+              <label><input type="radio" name="format" value="jpg" checked />JPG</label>
+              <label><input type="radio" name="format" value="png" />PNG</label>
+            </fieldset>
+            <fieldset class="settings pdf-mode pdf-inline" data-options>
+              <legend>Quality</legend>
+              <label><input type="radio" name="dpi" value="150" checked />Standard (150 dpi)</label>
+              <label><input type="radio" name="dpi" value="300" />High (300 dpi)</label>
+            </fieldset>
+            <div class="actions" data-options>
+              <button type="button" class="btn" data-run disabled>Convert</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <fieldset class="settings pdf-mode" aria-label="How to split" data-options>
+              <label><input type="radio" name="mode" value="every" checked data-mode />Every page as a separate file</label>
+              <div class="pdf-extract">
+                <label><input type="radio" name="mode" value="ranges" data-mode />Extract pages:</label>
+                <input type="text" class="text-input" placeholder="1-3, 5" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Pages to extract" aria-describedby="pdf-range-error" disabled data-ranges />
+              </div>
+              <p class="error" id="pdf-range-error" role="alert" data-range-error hidden></p>
+            </fieldset>
+            <div class="actions" data-options>
+              <button type="button" class="btn" data-run disabled>Split PDF</button>
+            </div>
+          </>
+        )}
       </div>
     )}
     <div class="pdf-done" data-done hidden>
@@ -66,6 +110,7 @@ const ENGINE_SIZE = '0.2 MB';
         <span class="name" data-done-name></span>
         <span class="size" data-done-meta></span>
       </div>
+      <p class="note" data-done-note hidden></p>
       <div class="actions">
         <a class="btn" data-download>Download</a>
         <button type="button" class="btn btn-quiet" data-reset>Start over</button>
@@ -74,10 +119,4 @@ const ENGINE_SIZE = '0.2 MB';
   </div>
 </div>
 
-<script>
-  import { mount } from '../ui/pdf';
-  const el = document.querySelector<HTMLElement>('[data-kind="pdf"]');
-  if (el) {
-    mount(el);
-  }
-</script>
+{imageOp ? <PdfImagesScript /> : <PdfMergeSplitScript />}

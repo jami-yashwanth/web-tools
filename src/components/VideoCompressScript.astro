@@ -1,0 +1,7 @@
+<script>
+  // Imported statically, so the page-load budget counts the island (its worker and libraries load with the first file).
+  import { mountCompress } from '../ui/video';
+  import { trackHooks } from '../ui/track';
+  const el = document.querySelector<HTMLElement>('[data-kind="video"][data-op="compress"]');
+  if (el) trackHooks(el.dataset.tool!, mountCompress(el));
+</script>

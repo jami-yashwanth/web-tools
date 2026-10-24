@@ -2,7 +2,11 @@ import { rangesLabel } from './ranges';
 import type { PdfFail, PdfOut, SplitMode } from './types';
 
 export class PdfError extends Error {
-  constructor(public reason: PdfFail) {
+  constructor(
+    public reason: PdfFail,
+    /** Which input (0-based) was at fault, when there is one. */
+    public index?: number,
+  ) {
     super(reason);
     this.name = 'PdfError';
   }

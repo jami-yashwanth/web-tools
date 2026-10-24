@@ -1,8 +1,10 @@
 import { execSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import config from '../../astro.config.mjs';
+import { MODELS } from '../../src/ai/config';
+import { WHISPER_SHA256 } from '../../src/ai/whisper/files';
 import { CATEGORY_LABEL, TOOLS, type Category } from '../../src/tools';
 
 // The same value the build used: SITE_URL or the default in astro.config.mjs.
@@ -10,9 +12,11 @@ const SITE = config.site as string;
 const html = (p: string) => readFileSync(`dist/${p}index.html`, 'utf8');
 
 beforeAll(() => {
-  // Hermetic: the default build has no analytics, whatever the shell exports.
+  // Hermetic: the default build has no analytics and no AI stubs, whatever the shell exports.
   const env = { ...process.env };
   delete env.PUBLIC_PLAUSIBLE_DOMAIN;
+  delete env.PUBLIC_AI_STUB;
+  delete env.PUBLIC_MODEL_BASE_URL;
   execSync('npx astro build', { stdio: 'pipe', env });
 }, 180_000);
 
@@ -20,6 +24,26 @@ beforeAll(() => {
 const COPY = {
   'merge-pdf': ['Drop PDF files here', 'Choose PDFs', 'Merged on your device. Your files are never uploaded.'],
   'split-pdf': ['Drop a PDF here', 'Choose PDF', 'Split on your device. Your files are never uploaded.'],
+  'remove-background': [
+    'Drop a photo here',
+    'Choose photo',
+    'Runs on your device with on-device AI. Your photos are never uploaded.',
+  ],
+  'image-to-text': [
+    'Drop an image with text',
+    'Choose image',
+    'Runs on your device with on-device AI. Your images are never uploaded.',
+  ],
+  'upscale-image': ['Drop an image', 'Choose image', 'Runs on your device with on-device AI. Your images are never uploaded.'],
+  'transcribe-audio': [
+    'Drop an audio or video file',
+    'Choose file',
+    'Runs on your device with on-device AI. Your files are never uploaded.',
+  ],
+  'pdf-to-jpg': ['Drop a PDF here', 'Choose PDF', 'Converted on your device. Your PDFs are never uploaded.'],
+  'jpg-to-pdf': ['Drop images here', 'Choose images', 'Converted on your device. Your images are never uploaded.'],
+  'compress-video': ['Drop a video here', 'Choose video', 'Converted on your device. Your videos are never uploaded.'],
+  'video-to-gif': ['Drop a video here', 'Choose video', 'Converted on your device. Your videos are never uploaded.'],
   'json-formatter': ['placeholder="Paste JSON here"', '>Format<', '>Minify<', '>Copy<', 'Options', '2 spaces', '4 spaces', 'Tab'],
   'base64-encode-decode': ['>Text<', '>Base64<', 'URL-safe'],
   'jwt-decoder': [
@@ -80,13 +104,30 @@ describe.each(TOOLS)('tool page $slug', (tool) => {
     }
     expect(h).toMatch(new RegExp(`<div[^>]*data-kind="${tool.kind}"[^>]*data-tool="${tool.slug}"`));
     for (const copy of COPY[tool.slug as keyof typeof COPY]) expect(h, copy).toContain(copy);
+    const statusAndResults = () => {
+      expect(h).toMatch(/<[^>]*role="status"[^>]*aria-live="polite"[^>]*data-status|<[^>]*data-status[^>]*role="status"/);
+      expect(h).toContain('data-results');
+    };
     if (tool.kind === 'pdf') {
       expect(h).toContain(`data-op="${tool.op}"`);
-      expect(h).toMatch(/<input[^>]*type="file"[^>]*accept="application\/pdf,\.pdf"/);
-      expect(/<input[^>]*type="file"[^>]*multiple/.test(h)).toBe(tool.op === 'merge');
-      expect(h).toContain('data-results');
-      expect(h).toContain('data-status');
+      const accept = tool.op === 'from-images' ? /accept="[^"]*image\/jpeg[^"]*image\/heic[^"]*"/ : /accept="application\/pdf,\.pdf"/;
+      expect(h).toMatch(new RegExp(`<input[^>]*type="file"[^>]*${accept.source}`));
+      expect(/<input[^>]*type="file"[^>]*multiple/.test(h)).toBe(tool.op === 'merge' || tool.op === 'from-images');
+      statusAndResults();
     }
+    if (tool.kind === 'ai') {
+      expect(h).toMatch(new RegExp(`data-kind="ai"[^>]*data-model="${tool.model}"[^>]*data-model-size="[^"]+"`));
+      expect(h).toContain(`accept="${tool.accepts}"`);
+      expect(/<input[^>]*type="file"[^>]*multiple/.test(h)).toBe(false);
+      statusAndResults();
+    }
+    if (tool.kind === 'video') {
+      expect(h).toContain(`data-op="${tool.op}"`);
+      expect(h).toMatch(/<input[^>]*type="file"[^>]*accept="[^"]*video\/mp4[^"]*"/);
+      expect(/<input[^>]*type="file"[^>]*multiple/.test(h)).toBe(false);
+      statusAndResults();
+    }
+    expect(h).not.toMatch(/\b(multiple|disabled|hidden|checked)="(false|undefined)"/);
     if (tool.kind === 'text') expect(h).toContain(`data-transform="${tool.transform}"`);
   });
 
@@ -112,15 +153,78 @@ describe('site', () => {
     }
   });
 
+  it('a production build carries no AI stub code', () => {
+    // The marker lives in src/ai/stub.ts, which only the PUBLIC_AI_STUB=1 (Playwright) build may include.
+    expect(readFileSync('src/ai/stub.ts', 'utf8')).toContain('__AI_STUB__'); // the scan below is not vacuous
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(`${dir}/${d.name}`) : [`${dir}/${d.name}`]));
+    for (const f of walk('dist').filter((f) => /\.(js|mjs|html)$/.test(f))) {
+      expect(readFileSync(f, 'utf8').includes('__AI_STUB__'), f).toBe(false);
+    }
+  });
+
+  it('ships the OCR language data from dist, at the size the model list says, named with its version', () => {
+    expect(MODELS.tessdata.sameOrigin).toBe(true);
+    // Served same-origin and cached by URL: a new version gets a new name, never the old one's cache.
+    expect(MODELS.tessdata.path).toBe('models/tessdata/eng-fast-4.1.0.traineddata.gz.bin');
+    expect(html('licenses/')).toContain('eng-fast-4.1.0.traineddata.gz.bin');
+    const file = `dist/${MODELS.tessdata.path}`;
+    expect(existsSync(file)).toBe(true);
+    expect(statSync(file).size).toBe(MODELS.tessdata.bytes);
+  });
+
+  it('AI pages show model sizes from the model list', () => {
+    expect(html('remove-background/')).toContain('data-model-size="5 MB"');
+    expect(html('remove-background/')).toContain('data-model-bytes="4574861"');
+    expect(html('transcribe-audio/')).toContain('data-model-size="80 MB"');
+    expect(html('upscale-image/')).toContain('data-model-size="5 MB"');
+    expect(html('upscale-image/')).toContain('data-model-bytes="4866420"');
+  });
+
+  it('Upscale image offers 2× and, once the device is known to take it, 4×', () => {
+    const h = html('upscale-image/');
+    expect(h).toMatch(/<legend[^>]*>Scale<\/legend>/);
+    expect(h).toMatch(/<input[^>]*value="2"[^>]*checked[^>]*>2×/);
+    expect(h).toMatch(/<label[^>]*hidden[^>]*data-scale-4[^>]*><input[^>]*value="4"[^>]*>4×/);
+  });
+
+  it('licences page lists the upscaling model, pinned, with the Real-ESRGAN licence', () => {
+    const h = html('licenses/');
+    expect(h).toContain('realesr-general-x4v3');
+    expect(h).toContain('vlad-grig/realesr-general-x4v3-onnx/blob/0e95d93e454cf6b5de9bdf5a1c9e7ec340d38231/onnx/model.onnx');
+    expect(h).toContain('7b10e80021ec3e0ff35017ae5022791879d93a799b2e201e1010a37510202266');
+    expect(h).toContain('Copyright (c) 2021, Xintao Wang');
+  });
+
+  it('licences page lists Whisper base pinned, every file with its sha256, and Transformers.js', () => {
+    const h = html('licenses/');
+    expect(h).toContain('https://huggingface.co/Xenova/whisper-base/tree/64da57285918e20ea79ea5c88eed7197933abaa8');
+    for (const [name, sha] of Object.entries(WHISPER_SHA256)) {
+      expect(h).toContain(name);
+      expect(h).toContain(sha);
+    }
+    expect(h).toContain('Copyright (c) 2022 OpenAI');
+    expect(h).toContain('https://github.com/huggingface/transformers.js/tree/4.3.1');
+    expect(h).toContain('@huggingface/tokenizers');
+    expect(h).toContain('@huggingface/jinja');
+  });
+
+  it('ships no model and no file over the 25 MB cap: the WebGPU runtime comes from the model host', () => {
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(`${dir}/${d.name}`) : [`${dir}/${d.name}`]));
+    for (const f of walk('dist')) expect(statSync(f).size, f).toBeLessThan(25 * 1024 * 1024);
+    expect(walk('dist').some((f) => /\.onnx$|asyncify[^/]*\.wasm$/.test(f))).toBe(false);
+  });
+
   it('homepage links to all tools and the filter', () => {
     const h = html('');
     for (const t of TOOLS) expect(h).toContain(`href="/${t.slug}/"`);
     expect(h).toContain('type="search"');
   });
 
-  it('homepage groups tools under 4 category headings in order', () => {
+  it('homepage groups tools under 6 category headings in order', () => {
     const h = html('');
-    const order: Category[] = ['image', 'pdf', 'developer', 'qr'];
+    const order: Category[] = ['image', 'pdf', 'ai', 'video', 'developer', 'qr'];
     const heads = [...h.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
     expect(heads).toEqual(order.map((c) => CATEGORY_LABEL[c]));
     const pos = (needle: string) => h.indexOf(needle);
@@ -138,6 +242,67 @@ describe('site', () => {
 
   it('homepage has no licences entry in the tool list', () => {
     expect(html('').match(/<li[^>]*>[\s\S]*?<\/li>/g)!.join('')).not.toContain('/licenses/');
+  });
+
+  it('licences page lists mp4box.js (BSD-3) and mp4-muxer (MIT), version-tagged', () => {
+    const h = html('licenses/');
+    const version = (n: string) => JSON.parse(readFileSync(`node_modules/${n}/package.json`, 'utf8')).version;
+    expect(h).toContain(`gpac/mp4box.js/tree/v${version('mp4box')}`);
+    expect(h).toContain('BSD-3-Clause');
+    expect(h).toContain('Telecom ParisTech');
+    expect(h).toContain(`Vanilagy/mp4-muxer/tree/v${version('mp4-muxer')}`);
+    expect(h).toContain('Copyright (c) 2023 Vanilagy');
+  });
+
+  it('licences page lists gifenc (MIT), version-tagged, with its licence text', () => {
+    const h = html('licenses/');
+    const version = JSON.parse(readFileSync('node_modules/gifenc/package.json', 'utf8')).version;
+    expect(h).toContain(`mattdesl/gifenc/tree/v${version}`);
+    expect(h).toContain('Copyright (c) 2017 Matt DesLauriers');
+  });
+
+  it('each video page loads only its own island', () => {
+    const scripts = (slug: string) => [...html(`${slug}/`).matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).join(' ');
+    expect(scripts('compress-video')).toContain('VideoCompressScript');
+    expect(scripts('compress-video')).not.toContain('VideoGifScript');
+    expect(scripts('video-to-gif')).toContain('VideoGifScript');
+    expect(scripts('video-to-gif')).not.toContain('VideoCompressScript');
+  });
+
+  it('each AI page loads only its own island, statically (so the page-load budget counts it)', () => {
+    const scripts = (slug: string) => [...html(`${slug}/`).matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).join(' ');
+    const islands = { 'remove-background': 'AiBgScript', 'image-to-text': 'AiOcrScript', 'upscale-image': 'AiUpscaleScript', 'transcribe-audio': 'AiTranscribeScript' };
+    for (const [slug, own] of Object.entries(islands)) {
+      expect(scripts(slug), slug).toContain(own);
+      for (const other of Object.values(islands)) if (other !== own) expect(scripts(slug), slug).not.toContain(other);
+      // No dynamic import of a tool definition at page load: what loads is what the budget counts.
+      for (const src of scripts(slug).split(' ').filter((u) => u.includes(own))) {
+        expect(readFileSync(`dist${src}`, 'utf8'), src).not.toMatch(/import\(/);
+      }
+    }
+  });
+
+  it('Compress video and Video to GIF take MP4 and MOV, not WebM, and say so', () => {
+    for (const slug of ['compress-video', 'video-to-gif']) {
+      const h = html(`${slug}/`);
+      expect(h).toContain('Drop an MP4 or MOV video onto the page');
+      expect(h).not.toMatch(/accept="[^"]*webm/);
+    }
+  });
+
+  it('licences page lists every dependency in package.json and every model in MODELS', () => {
+    const h = html('licenses/');
+    const deps = Object.keys(JSON.parse(readFileSync('package.json', 'utf8')).dependencies as Record<string, string>);
+    for (const d of deps) expect(h, `dependency ${d}`).toContain(d);
+    // Each model: its licence, and a version-tagged (commit-pinned) source or the runtime's own version.
+    for (const [key, m] of Object.entries(MODELS)) {
+      expect(h, `${key} licence`).toContain(m.licence);
+      const hf = /^(.+?)\/resolve\/([0-9a-f]{40})(?:\/|$)/.exec(m.path);
+      if (hf) expect(h, `${key} source`).toContain(`${hf[1]}/${m.files ? 'tree' : 'blob'}/${hf[2]}`);
+      else if (key === 'ortWebgpu') expect(h, key).toContain(m.path.split('/').pop()!);
+      else if (key === 'tessdata') expect(h, key).toContain('tessdata_fast');
+      else expect(h, key).toContain('onnxruntime-web');
+    }
   });
 
   it('licences page lists the dependencies', () => {
@@ -186,6 +351,15 @@ describe('site', () => {
     expect(h).toContain('Permission to use, copy, modify, and/or distribute'); // tslib 0BSD
   });
 
+  it('licences page lists pdf.js with its version-tagged source and licence text', () => {
+    const h = html('licenses/');
+    const v = JSON.parse(readFileSync('node_modules/pdfjs-dist/package.json', 'utf8')).version;
+    expect(h).toMatch(/<strong[^>]*>pdf\.js \(pdfjs-dist\)<\/strong>/);
+    expect(h).toContain(`mozilla/pdf.js/tree/v${v}`);
+    expect(h).toContain('Apache License'); // its LICENSE text
+    expect(h).toContain('Liberation font licence'); // the bundled font licences are listed too
+  });
+
   it('licences page description covers all the tools', () => {
     expect(html('licenses/')).not.toContain('these image tools');
   });
@@ -199,7 +373,7 @@ describe('site', () => {
   it('sitemap lists all 9 tool pages', () => {
     const xml = readFileSync('dist/sitemap-0.xml', 'utf8');
     for (const t of TOOLS) expect(xml).toContain(`<loc>${SITE}/${t.slug}/</loc>`);
-    expect(TOOLS).toHaveLength(9);
+    expect(TOOLS).toHaveLength(17);
   });
 
   it('has sitemap index and robots.txt', () => {
@@ -214,6 +388,14 @@ describe('site', () => {
     expect(worker, 'PDF worker chunk importing pdf-lib').toBeDefined();
     const bytes = [lib!, worker!].reduce((n, f) => n + gzipSync(readFileSync(`dist/_astro/${f}`)).length, 0);
     const shown = `${(bytes / 1e6).toFixed(1)} MB`;
-    for (const slug of ['merge-pdf', 'split-pdf']) expect(html(`${slug}/`)).toContain(`data-codec-size="${shown}"`);
+    for (const slug of ['merge-pdf', 'split-pdf', 'jpg-to-pdf']) expect(html(`${slug}/`)).toContain(`data-codec-size="${shown}"`);
+  });
+
+  it('PDF to JPG shows the measured gzip size of its worker and the two pdf.js modules', () => {
+    const astro = readdirSync('dist/_astro');
+    const parts = astro.filter((f) => /^raster-worker-[^/]*\.js$/.test(f) || (/^pdf(\.worker)?-[\w-]+\.js$/.test(f) && !f.startsWith('pdf-lib-')));
+    expect(parts, 'raster worker, pdf.js and pdf.js parser chunks').toHaveLength(3);
+    const bytes = parts.reduce((n, f) => n + gzipSync(readFileSync(`dist/_astro/${f}`)).length, 0);
+    expect(html('pdf-to-jpg/')).toContain(`data-codec-size="${(bytes / 1e6).toFixed(1)} MB"`);
   });
 });

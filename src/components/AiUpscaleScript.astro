@@ -1,0 +1,8 @@
+<script>
+  // Imported statically, so the page-load budget counts the island (its worker and model load with the first file).
+  import { mountAi } from '../ui/ai';
+  import { upscaleDef } from '../ui/upscale';
+  import { trackHooks } from '../ui/track';
+  const el = document.querySelector<HTMLElement>('[data-kind="ai"][data-model="upscale"]');
+  if (el) trackHooks(el.dataset.tool!, mountAi(el, upscaleDef(el)));
+</script>

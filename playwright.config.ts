@@ -17,7 +17,9 @@ export default defineConfig({
     command: `npm run build && npx astro preview --port ${PORT} --ignore-lock`,
     url: `http://localhost:${PORT}`,
     // The build carries the Plausible tag so the privacy test can watch it. Every test stubs plausible.io.
-    env: { PUBLIC_PLAUSIBLE_DOMAIN: 'tools.test' },
+    // PUBLIC_AI_STUB swaps model inference for deterministic stand-ins; models are fetched from /test-models/ on this
+    // server, which tests fulfil with page.route (no model files are ever put in dist).
+    env: { PUBLIC_PLAUSIBLE_DOMAIN: 'tools.test', PUBLIC_AI_STUB: '1', PUBLIC_MODEL_BASE_URL: `http://localhost:${PORT}/test-models` },
     reuseExistingServer: false,
     timeout: 180_000,
   },
